@@ -1,15 +1,3 @@
-/*
-May 2015
-		  Authors:
-Ankit Dhall     Yash Chandak
-
-TO DO:
--set capture frame size in VideoCapture object
--take lines only closer to the region of the vanishing points
-	- plug the prevRes in the eqns for new frame and consider lines only
-with error < |epsilon| -cluster more if more than 2 vanishing points are present
-(advanced) -refactor the CODE -error calculation, remove so many divisions!
-*/
 #include <math.h>
 #include <armadillo>
 #include <ctime>
@@ -23,16 +11,19 @@ with error < |epsilon| -cluster more if more than 2 vanishing points are present
 #include "opencv2/imgcodecs.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
 
-// add OpenCV and Armadillo namespaces
 using namespace cv;
 using namespace std;
 using namespace arma;
 
-class vanishingPt {
+struct MatchPathSeparator {
+  bool operator()(char ch) const { return ch == '/'; }
+};
+
+class VanishingPointDetector {
  public:
   cv::Mat image, img, gray;
   cv::Mat frame;
-  vector<vector<int> > points;
+  vector<vector<int>> points;
   mat A, b, prevRes;
   mat Atemp, btemp, res, aug, error, soln;
   // ofstream out1, out2;
@@ -57,13 +48,17 @@ class vanishingPt {
   // to store intermediate errors
   double temperr;
 
+  // Bounding box to be excluded for vanishing point detection
+  cv::Point bb_top_left;
+  cv::Point bb_bottom_right;
+
+  // Flag whether a bounding box was set
+  bool has_bounding_box;
+
   // constructor to set video/webcam and find vanishing point
-  vanishingPt(std::string input_path, std::string output_path) {
+  VanishingPointDetector() {
     cv::namedWindow("win", 2);
     cv::namedWindow("Lines", 2);
-
-    // to calculate fps
-    clock_t begin, end;
 
     // read from video file on disk
     // to read from webcam initialize as: cap = VideoCapture(int device_id);
@@ -74,55 +69,77 @@ class vanishingPt {
     // get first frame to intialize the values
 
     // for (auto &imgPath : imagePaths) {
+    // frame = cv::imread(input_path, CV_LOAD_IMAGE_COLOR);
+    // image = cv::Mat(cv::Size(frame.rows, frame.cols), CV_8UC1, 0.0);
+    ////}
+
+    //// define minimum length requirement for any line
+    // minlength = image.cols * image.cols * 0.001;
+
+    // cout << minlength << endl;
+
+    // int flag = 0;
+    //// while (cap.isOpened())  // check if camera/ video stream is
+    //// available
+    ////{
+    //// if (!cap.grab()) continue;
+
+    //// if (!cap.retrieve(img)) continue;
+
+    //// it's advised not to modify image stored in the buffer structure
+    //// of the opencv.
+    //// frame = img.clone();
+
+    //// to calculate fps
+    //// begin = clock();
+
+    // cv::cvtColor(frame, image, cv::COLOR_BGR2GRAY);
+
+    //// resize frame to 480x320
+    // cv::resize(image, image, cv::Size(480, 320));
+
+    //// equalize histogram
+    // cv::equalizeHist(image, image);
+
+    //// initialize the line segment matrix in format y = m*x + c
+    // init(image, prevRes);
+
+    //// draw lines on image and display
+    // makeLines(flag);
+
+    //// approximate vanishing point
+    // eval(output_path);
+  }
+
+  void process_image(std::string input_path, std::string output_path) {
     frame = cv::imread(input_path, CV_LOAD_IMAGE_COLOR);
     image = cv::Mat(cv::Size(frame.rows, frame.cols), CV_8UC1, 0.0);
-    //}
-
-    // define minimum length requirement for any line
-    minlength = image.cols * image.cols * 0.001;
-
-    cout << minlength << endl;
-
     int flag = 0;
-    // while (cap.isOpened())  // check if camera/ video stream is
-    // available
-    //{
-    // if (!cap.grab()) continue;
 
-    // if (!cap.retrieve(img)) continue;
-
-    // it's advised not to modify image stored in the buffer structure
-    // of the opencv.
-    // frame = img.clone();
-
-    // to calculate fps
-    // begin = clock();
-
+    minlength = image.cols * image.cols * 0.001;
     cv::cvtColor(frame, image, cv::COLOR_BGR2GRAY);
-
-    // resize frame to 480x320
     cv::resize(image, image, cv::Size(480, 320));
-
-    // equalize histogram
     cv::equalizeHist(image, image);
-
-    // initialize the line segment matrix in format y = m*x + c
     init(image, prevRes);
-
-    // draw lines on image and display
     makeLines(flag);
-
-    // approximate vanishing point
     eval(output_path);
-
-    // to calculate fps
-    // end = clock();
-    // cout << "fps: " << 1 / (double(end - begin) / CLOCKS_PER_SEC) <<
-    // endl;
-
-    // hit 'esc' to exit program
-    //}
   }
+
+  void set_bounding_box(cv::Point top_left, cv::Point bottom_right) {
+    bb_top_left = top_left;
+    bb_bottom_right = bottom_right;
+
+    has_bounding_box = true;
+  }
+
+  inline bool is_in_bounding_box(mat point) {
+    double x = soln(0, 0);
+    double y = soln(1, 0);
+
+    return x >= bb_top_left.x && x <= bb_bottom_right.x && y >= bb_top_left.y &&
+	   y <= bb_bottom_right.y;
+  }
+
   void init(cv::Mat image, mat prevRes) {
     // create OpenCV object for line segment detection
     cv::Ptr<cv::LineSegmentDetector> ls =
@@ -171,8 +188,8 @@ class vanishingPt {
 	       CV_RGB(255, 0, 0), 1, CV_AA);
     }
     // ls->drawSegments(drawnLines, lines_std);
-    //cv::imwrite("/Users/kolja/Projects/ml-prakt/data/test" + ".png",
-		//drawnLines);
+    // cv::imwrite("/Users/kolja/Projects/ml-prakt/data/test" + ".png",
+    // drawnLines);
     // cv::imshow("Lines", drawnLines);
     cout << "Detected:" << lines_std.size() << endl;
     cout << "Filtered:" << points.size() << endl;
@@ -246,7 +263,7 @@ class vanishingPt {
 
 	// if current error is smaller than previous min error then
 	// update the solution (point)
-	if (err > temperr) {
+	if (err > temperr && (!has_bounding_box || !is_in_bounding_box(soln))) {
 	  soln = res;
 	  err = temperr;
 	}
@@ -294,12 +311,61 @@ class vanishingPt {
   }
 };
 
-int main(int argc, char *argv[]) {
-  if (argc < 3) {
-    cerr << "Provide input and output files." << endl;
-    return -1;
+std::vector<std::string> tokenize(std::string input) {
+  std::stringstream ss(input);
+  std::vector<string> output;
+  std::string token;
+
+  while (std::getline(ss, token, ',')) {
+    output.push_back(token);
   }
-  vanishingPt obj(argv[1], argv[2]);
+
+  return output;
+}
+
+std::string extract_filename(const std::string &path) {
+  return std::string(
+      std::find_if(path.rbegin(), path.rend(), MatchPathSeparator()).base(),
+      path.end());
+}
+
+std::vector<std::tuple<std::string, std::string, int, int, int, int>>
+read_config(std::string path) {
+  std::vector<std::tuple<std::string, std::string, int, int, int, int>> result;
+  ifstream f(path);
+  std::string line;
+
+  if (f.is_open()) {
+    while (std::getline(f, line)) {
+      std::vector<std::string> tokens = tokenize(line);
+      result.push_back(std::make_tuple(
+	  tokens[0], extract_filename(tokens[0]), std::stoi(tokens[1]),
+	  std::stoi(tokens[2]), std::stoi(tokens[3]), std::stoi(tokens[4])));
+    }
+    f.close();
+  }
+
+  return result;
+}
+
+int main(int argc, char *argv[]) {
+  // if (argc < 3) {
+  // cerr << "Provide input and output files." << endl;
+  // return -1;
+  //}
+  std::vector<std::tuple<std::string, std::string, int, int, int, int>> cfg =
+      read_config("/Users/kolja/Projects/ml-prakt/data/VehicleReId/bbs.txt");
+
+  VanishingPointDetector vp_detector;
+  for (auto &entry : cfg) {
+    cv::Point p1(std::get<2>(entry), std::get<3>(entry));
+    cv::Point p2(std::get<4>(entry), std::get<5>(entry));
+
+    vp_detector.set_bounding_box(p1, p2);
+    vp_detector.process_image(std::get<0>(entry),
+			      "/Users/kolja/Projects/ml-prakt/data/final/out/" + std::get<1>(entry));
+  }
+
   cv::destroyAllWindows();
   return 0;
 }
