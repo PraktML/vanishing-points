@@ -49,8 +49,8 @@ class VanishingPointDetector {
   double temperr;
 
   // Bounding box to be excluded for vanishing point detection
-  cv::Point bb_top_left;
-  cv::Point bb_bottom_right;
+  cv::Point bb_bottom_left;
+  cv::Point bb_top_right;
 
   // Flag whether a bounding box was set
   bool has_bounding_box;
@@ -118,16 +118,16 @@ class VanishingPointDetector {
 
     minlength = image.cols * image.cols * 0.001;
     cv::cvtColor(frame, image, cv::COLOR_BGR2GRAY);
-    cv::resize(image, image, cv::Size(480, 320));
+    //cv::resize(image, image, cv::Size(480, 320));
     cv::equalizeHist(image, image);
     init(image, prevRes);
     makeLines(flag);
     eval(output_path);
   }
 
-  void set_bounding_box(cv::Point top_left, cv::Point bottom_right) {
-    bb_top_left = top_left;
-    bb_bottom_right = bottom_right;
+  void set_bounding_box(cv::Point bottom_left, cv::Point top_right) {
+    bb_bottom_left = bottom_left;
+    bb_top_right = top_right;
 
     has_bounding_box = true;
   }
@@ -136,8 +136,8 @@ class VanishingPointDetector {
     double x = soln(0, 0);
     double y = soln(1, 0);
 
-    return x >= bb_top_left.x && x <= bb_bottom_right.x && y >= bb_top_left.y &&
-	   y <= bb_bottom_right.y;
+    return x >= bb_bottom_left.x && x <= bb_top_right.x && y >= bb_bottom_left.y &&
+	   y <= bb_top_right.y;
   }
 
   void init(cv::Mat image, mat prevRes) {
