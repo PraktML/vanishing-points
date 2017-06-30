@@ -118,7 +118,7 @@ class VanishingPointDetector {
 
     minlength = image.cols * image.cols * 0.001;
     cv::cvtColor(frame, image, cv::COLOR_BGR2GRAY);
-    //cv::resize(image, image, cv::Size(480, 320));
+    // cv::resize(image, image, cv::Size(480, 320));
     cv::equalizeHist(image, image);
     init(image, prevRes);
     makeLines(flag);
@@ -136,8 +136,8 @@ class VanishingPointDetector {
     double x = soln(0, 0);
     double y = soln(1, 0);
 
-    return x >= bb_bottom_left.x && x <= bb_top_right.x && y >= bb_bottom_left.y &&
-	   y <= bb_top_right.y;
+    return x >= bb_bottom_left.x && x <= bb_top_right.x &&
+	   y >= bb_bottom_left.y && y <= bb_top_right.y;
   }
 
   void init(cv::Mat image, mat prevRes) {
@@ -329,18 +329,18 @@ std::string extract_filename(const std::string &path) {
       path.end());
 }
 
-std::vector<std::tuple<std::string, std::string, int, int, int, int>>
-read_config(std::string path) {
-  std::vector<std::tuple<std::string, std::string, int, int, int, int>> result;
+std::vector<std::tuple<std::string, int, int, int, int>> read_config(
+    std::string path) {
+  std::vector<std::tuple<std::string, int, int, int, int>> result;
   ifstream f(path);
   std::string line;
 
   if (f.is_open()) {
     while (std::getline(f, line)) {
       std::vector<std::string> tokens = tokenize(line);
-      result.push_back(std::make_tuple(
-	  tokens[0], extract_filename(tokens[0]), std::stoi(tokens[1]),
-	  std::stoi(tokens[2]), std::stoi(tokens[3]), std::stoi(tokens[4])));
+      result.push_back(
+	  std::make_tuple(tokens[0], std::stoi(tokens[1]), std::stoi(tokens[2]),
+			  std::stoi(tokens[3]), std::stoi(tokens[4])));
     }
     f.close();
   }
@@ -349,21 +349,23 @@ read_config(std::string path) {
 }
 
 int main(int argc, char *argv[]) {
-  // if (argc < 3) {
-  // cerr << "Provide input and output files." << endl;
-  // return -1;
-  //}
-  std::vector<std::tuple<std::string, std::string, int, int, int, int>> cfg =
-      read_config("/Users/kolja/Projects/ml-prakt/data/VehicleReId/bbs.txt");
+  if (argc < 2) {
+    cerr << "Specify path to images folder." << endl;
+    return -1;
+  }
+  std::string images_path = argv[1];
+
+  std::vector<std::tuple<std::string, int, int, int, int>> cfg =
+      read_config(images_path + "/config.txt");
 
   VanishingPointDetector vp_detector;
   for (auto &entry : cfg) {
-    cv::Point p1(std::get<2>(entry), std::get<3>(entry));
-    cv::Point p2(std::get<4>(entry), std::get<5>(entry));
+    cv::Point p1(std::get<1>(entry), std::get<2>(entry));
+    cv::Point p2(std::get<3>(entry), std::get<4>(entry));
 
     vp_detector.set_bounding_box(p1, p2);
-    vp_detector.process_image(std::get<0>(entry),
-			      "/Users/kolja/Projects/ml-prakt/data/final/out/" + std::get<1>(entry));
+    vp_detector.process_image(images_path + "/" + std::get<0>(entry),
+			      images_path + "/out/" + std::get<0>(entry));
   }
 
   cv::destroyAllWindows();
