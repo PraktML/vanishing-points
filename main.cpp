@@ -49,8 +49,8 @@ class VanishingPointDetector {
   double temperr;
 
   // Bounding box to be excluded for vanishing point detection
-  cv::Point bb_bottom_left;
-  cv::Point bb_top_right;
+  cv::Point bb_top_left;
+  cv::Point bb_bottom_right;
 
   // Flag whether a bounding box was set
   bool has_bounding_box;
@@ -111,13 +111,40 @@ class VanishingPointDetector {
     // eval(output_path);
   }
 
+  void find_contours(cv::Mat img, std::string output_path) {
+    cv::RNG rng(12345);
+    cv::Mat canny_output;
+    vector<vector<Point>> contours;
+    vector<Vec4i> hierarchy;
+    int thresh = 100;
+
+    cv::Rect roi(bb_top_left.x - 10, bb_top_left.y - 10, bb_bottom_right.x - bb_top_left.x + 20, bb_bottom_right.y - bb_top_left.y + 20);
+    cv::Mat image_roi = img(roi);
+
+    cv::Canny(image_roi, canny_output, thresh, thresh * 2, 3);
+
+    findContours(canny_output, contours, hierarchy, CV_RETR_TREE,
+		 CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+
+    cv::Mat drawing = cv::Mat::zeros(canny_output.size(), CV_8UC3);
+    for (int i = 0; i < contours.size(); i++) {
+      Scalar color =
+	  Scalar(rng.uniform(0, 255), rng.uniform(0, 255), rng.uniform(0, 255));
+      drawContours(drawing, contours, i, color, 2, 8, hierarchy, 0, Point());
+    }
+    cv::imwrite(output_path + "_contours.bmp", drawing);
+  }
+
   void process_image(std::string input_path, std::string output_path) {
     frame = cv::imread(input_path, CV_LOAD_IMAGE_COLOR);
     image = cv::Mat(cv::Size(frame.rows, frame.cols), CV_8UC1, 0.0);
     int flag = 0;
 
-    minlength = image.cols * image.cols * 0.001;
+    minlength = image.cols * image.cols * 0.01;
     cv::cvtColor(frame, image, cv::COLOR_BGR2GRAY);
+
+    find_contours(image, output_path);
+
     // cv::resize(image, image, cv::Size(480, 320));
     cv::equalizeHist(image, image);
     init(image, prevRes);
@@ -125,9 +152,9 @@ class VanishingPointDetector {
     eval(output_path);
   }
 
-  void set_bounding_box(cv::Point bottom_left, cv::Point top_right) {
-    bb_bottom_left = bottom_left;
-    bb_top_right = top_right;
+  void set_bounding_box(cv::Point top_left, cv::Point bottom_right) {
+    bb_top_left = top_left;
+    bb_bottom_right = bottom_right;
 
     has_bounding_box = true;
   }
@@ -136,8 +163,8 @@ class VanishingPointDetector {
     double x = soln(0, 0);
     double y = soln(1, 0);
 
-    return x >= bb_bottom_left.x && x <= bb_top_right.x &&
-	   y >= bb_bottom_left.y && y <= bb_top_right.y;
+    return x >= bb_top_left.x && x <= bb_bottom_right.x &&
+	   y >= bb_top_left.y && y <= bb_bottom_right.y;
   }
 
   void init(cv::Mat image, mat prevRes) {
